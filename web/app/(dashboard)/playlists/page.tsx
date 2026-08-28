@@ -1,17 +1,20 @@
-'use client';
+"use client";
 
-import { useTitle } from '@/lib/useTitle';
-import { useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
-import { searchAnime, fetchAnimeDetail } from '@/lib/anime-provider';
-import Image from 'next/image';
-import RequireAuth from '@/components/RequireAuth';
-import { useAuth } from '@/lib/auth-context';
-import { useSfw } from '@/lib/sfw-context';
-import { getTheme } from '@/lib/theme';
-import { enqueueSnackbar } from 'notistack';
-import type { AniListMedia, AnimeDetail } from '@/lib/types';
-import { fireClientAchievementEvent } from '@/lib/achievements/fire-event';
+import { useTitle } from "@/lib/useTitle";
+import { useEffect, useState, useCallback } from "react";
+import { supabase } from "@/lib/supabase";
+import { searchAnime, fetchAnimeDetail } from "@/lib/anime-provider";
+import Image from "next/image";
+import RequireAuth from "@/components/RequireAuth";
+import { useAuth } from "@/lib/auth-context";
+import { useSfw } from "@/lib/sfw-context";
+import { getTheme } from "@/lib/theme";
+import { enqueueSnackbar } from "notistack";
+import type { AniListMedia, AnimeDetail } from "@/lib/types";
+import { fireClientAchievementEvent } from "@/lib/achievements/fire-event";
+import { DashboardInput } from "@/components/ui/DashboardInput";
+import { getRandomQuote } from "@/lib/loading-quotes";
+import Link from "next/link";
 
 interface PlaylistDoc {
   id: string;
@@ -24,43 +27,58 @@ interface PlaylistDoc {
 }
 
 function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 64) || 'playlist';
+  return (
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 64) || "playlist"
+  );
 }
 
 export default function PlaylistsPageGuarded() {
-  return <RequireAuth><PlaylistsPage /></RequireAuth>;
+  return (
+    <RequireAuth>
+      <PlaylistsPage />
+    </RequireAuth>
+  );
 }
 
 function PlaylistsPage() {
-  useTitle('Playlists');
+  useTitle("Playlists");
   const { sfwMode } = useSfw();
   const theme = getTheme(sfwMode);
   const { userId } = useAuth();
   const [playlists, setPlaylists] = useState<PlaylistDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newDescription, setNewDescription] = useState('');
-  const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistDoc | null>(null);
+  const [loadingQuote, setLoadingQuote] = useState("");
+  useEffect(() => {
+    setLoadingQuote(getRandomQuote("general"));
+  }, []);
+  const [newTitle, setNewTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistDoc | null>(
+    null,
+  );
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
 
   const loadPlaylists = useCallback(async () => {
+    const start = Date.now();
     try {
-      if (!userId) throw new Error('Not authenticated');
+      if (!userId) throw new Error("Not authenticated");
       const { data, error } = await supabase
-        .from('playlists')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+        .from("playlists")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
       if (error) throw error;
       setPlaylists((data || []) as PlaylistDoc[]);
     } catch {
       // Not authenticated
     }
+    const elapsed = Date.now() - start;
+    if (elapsed < 1000) await new Promise((r) => setTimeout(r, 1000 - elapsed));
     setLoading(false);
   }, [userId]);
 
@@ -72,50 +90,60 @@ function PlaylistsPage() {
     if (!newTitle.trim()) return;
     setCreating(true);
     try {
-      if (!userId) throw new Error('Not authenticated');
+      if (!userId) throw new Error("Not authenticated");
       const slug = `${slugify(newTitle)}-${Date.now().toString(36)}`;
-      await supabase.from('playlists').insert({
+      await supabase.from("playlists").insert({
         user_id: userId,
         title: newTitle.trim(),
         description: newDescription.trim(),
-        anime_ids: '[]',
-        visibility: 'Public',
+        anime_ids: "[]",
+        visibility: "Public",
         slug,
       });
-      setNewTitle('');
-      setNewDescription('');
+      setNewTitle("");
+      setNewDescription("");
       loadPlaylists();
-      enqueueSnackbar('Playlist created', { variant: 'success' });
-      if (userId) fireClientAchievementEvent(userId, 'playlist_create');
+      enqueueSnackbar("Playlist created", { variant: "success" });
+      if (userId) fireClientAchievementEvent(userId, "playlist_create");
     } catch {
-      enqueueSnackbar('Failed to create playlist', { variant: 'error' });
+      enqueueSnackbar("Failed to create playlist", { variant: "error" });
     }
     setCreating(false);
   }
 
   async function deletePlaylist(playlist: PlaylistDoc) {
-    await supabase.from('playlists').delete().eq('id', playlist.id);
+    await supabase.from("playlists").delete().eq("id", playlist.id);
     setSelectedPlaylist(null);
-    enqueueSnackbar('Playlist deleted', { variant: 'success' });
+    enqueueSnackbar("Playlist deleted", { variant: "success" });
     loadPlaylists();
   }
 
   function copyLink(slug: string) {
-    navigator.clipboard.writeText(`${window.location.origin}/playlists/${slug}`);
+    navigator.clipboard.writeText(
+      `${window.location.origin}/playlists/${slug}`,
+    );
     setCopiedSlug(slug);
     setTimeout(() => setCopiedSlug(null), 2000);
-    enqueueSnackbar('Link copied!', { variant: 'success' });
+    enqueueSnackbar("Link copied!", { variant: "success" });
   }
 
   if (loading) {
-    return <p className="text-gray-500 text-center mt-12">Loading playlists...</p>;
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <p className="text-gray-500">Loading playlists...</p>
+        <p className="text-base text-gray-400 italic mt-2">{loadingQuote}</p>
+      </div>
+    );
   }
 
   if (selectedPlaylist) {
     return (
       <PlaylistEditor
         playlist={selectedPlaylist}
-        onBack={() => { setSelectedPlaylist(null); loadPlaylists(); }}
+        onBack={() => {
+          setSelectedPlaylist(null);
+          loadPlaylists();
+        }}
         onDelete={() => deletePlaylist(selectedPlaylist)}
       />
     );
@@ -126,36 +154,44 @@ function PlaylistsPage() {
       <h1 className="text-xl font-bold text-gray-200 mb-6">Playlists</h1>
 
       <div className="bg-[#141925] rounded-lg p-4 mb-6 border border-[#253040]">
-        <h2 className="text-sm font-semibold text-gray-300 mb-3">Create New Playlist</h2>
-        <input
-          type="text"
-          placeholder="Playlist title"
-          value={newTitle}
-          onChange={(e) => setNewTitle(e.target.value)}
-          className={`w-full px-3 py-2 bg-[#0b0e14] border border-[#253040] rounded-lg text-gray-200 text-sm mb-2 outline-none focus:border-${theme.accent}-500`}
-        />
-        <input
-          type="text"
-          placeholder="Description (optional)"
-          value={newDescription}
-          onChange={(e) => setNewDescription(e.target.value)}
-          className={`w-full px-3 py-2 bg-[#0b0e14] border border-[#253040] rounded-lg text-gray-200 text-sm mb-3 outline-none focus:border-${theme.accent}-500`}
-        />
+        <h2 className="text-sm font-semibold text-gray-300 mb-3">
+          Create New Playlist
+        </h2>
+        <div className="mb-2">
+          <DashboardInput
+            type="text"
+            placeholder="Playlist title"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            focusColor="accent"
+          />
+        </div>
+        <div className="mb-3">
+          <DashboardInput
+            type="text"
+            placeholder="Description (optional)"
+            value={newDescription}
+            onChange={(e) => setNewDescription(e.target.value)}
+            focusColor="accent"
+          />
+        </div>
         <button
           onClick={createPlaylist}
           disabled={!newTitle.trim() || creating}
           className={`px-4 py-2 ${theme.btn} text-white text-sm rounded-lg font-medium disabled:opacity-50 transition-colors`}
         >
-          {creating ? 'Creating...' : 'Create'}
+          {creating ? "Creating..." : "Create"}
         </button>
       </div>
 
       {playlists.length === 0 ? (
-        <p className="text-gray-500 text-center mt-8">No playlists yet. Create one above!</p>
+        <p className="text-gray-500 text-center mt-8">
+          No playlists yet. Create one above!
+        </p>
       ) : (
         <div className="space-y-3">
           {playlists.map((pl) => {
-            const animeIds: number[] = JSON.parse(pl.anime_ids || '[]');
+            const animeIds: number[] = JSON.parse(pl.anime_ids || "[]");
             return (
               <div
                 key={pl.id}
@@ -164,16 +200,27 @@ function PlaylistsPage() {
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-200">{pl.title}</h3>
-                    {pl.description && <p className="text-xs text-gray-500 mt-0.5">{pl.description}</p>}
-                    <p className="text-xs text-gray-600 mt-1">{animeIds.length} anime</p>
+                    <h3 className="text-sm font-semibold text-gray-200">
+                      {pl.title}
+                    </h3>
+                    {pl.description && (
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {pl.description}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-600 mt-1">
+                      {animeIds.length} anime
+                    </p>
                   </div>
-                  <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                  <div
+                    className="flex gap-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <button
                       onClick={() => copyLink(pl.slug)}
                       className="px-3 py-1 text-xs bg-[#0b0e14] border border-[#253040] rounded text-gray-400 hover:text-gray-200 transition-colors"
                     >
-                      {copiedSlug === pl.slug ? 'Copied!' : 'Copy Link'}
+                      {copiedSlug === pl.slug ? "Copied!" : "Copy Link"}
                     </button>
                     <button
                       onClick={() => deletePlaylist(pl)}
@@ -205,9 +252,13 @@ function PlaylistEditor({
   const theme = getTheme(sfwMode);
   const [title, setTitle] = useState(playlist.title);
   const [description, setDescription] = useState(playlist.description);
-  const [animeIds, setAnimeIds] = useState<number[]>(JSON.parse(playlist.anime_ids || '[]'));
-  const [animeDetails, setAnimeDetails] = useState<Map<number, AnimeDetail>>(new Map());
-  const [searchQuery, setSearchQuery] = useState('');
+  const [animeIds, setAnimeIds] = useState<number[]>(
+    JSON.parse(playlist.anime_ids || "[]"),
+  );
+  const [animeDetails, setAnimeDetails] = useState<Map<number, AnimeDetail>>(
+    new Map(),
+  );
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<AniListMedia[]>([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -231,14 +282,17 @@ function PlaylistEditor({
   async function save() {
     setSaving(true);
     try {
-      await supabase.from('playlists').update({
-        title: title.trim(),
-        description: description.trim(),
-        anime_ids: JSON.stringify(animeIds),
-      }).eq('id', playlist.id);
-      enqueueSnackbar('Playlist saved', { variant: 'success' });
+      await supabase
+        .from("playlists")
+        .update({
+          title: title.trim(),
+          description: description.trim(),
+          anime_ids: JSON.stringify(animeIds),
+        })
+        .eq("id", playlist.id);
+      enqueueSnackbar("Playlist saved", { variant: "success" });
     } catch {
-      enqueueSnackbar('Failed to save playlist', { variant: 'error' });
+      enqueueSnackbar("Failed to save playlist", { variant: "error" });
     }
     setSaving(false);
   }
@@ -255,25 +309,35 @@ function PlaylistEditor({
     setSearching(false);
   }
 
-  function addAnime(mediaId: number) {
-    if (!animeIds.includes(mediaId)) {
-      const updated = [...animeIds, mediaId];
-      setAnimeIds(updated);
-      supabase.from('playlists').update({
-        anime_ids: JSON.stringify(updated),
-      }).eq('id', playlist.id);
-      enqueueSnackbar('Added to playlist', { variant: 'success' });
-    }
-  }
+  const addAnime = useCallback(
+    async (mediaId: number) => {
+      if (!animeIds.includes(mediaId)) {
+        const updated = [...animeIds, mediaId];
+        setAnimeIds(updated);
+        await supabase
+          .from("playlists")
+          .update({ anime_ids: JSON.stringify(updated) })
+          .eq("id", playlist.id);
+        enqueueSnackbar("Added to playlist", { variant: "success" });
+      }
+    },
+    [animeIds, playlist.id],
+  );
 
-  function removeAnime(mediaId: number) {
-    const updated = animeIds.filter((id) => id !== mediaId);
-    setAnimeIds(updated);
-    supabase.from('playlists').update({
-      anime_ids: JSON.stringify(updated),
-    }).eq('id', playlist.id);
-    enqueueSnackbar('Removed from playlist', { variant: 'success' });
-  }
+  const removeAnime = useCallback(
+    async (mediaId: number) => {
+      const updated = animeIds.filter((id) => id !== mediaId);
+      setAnimeIds(updated);
+      await supabase
+        .from("playlists")
+        .update({
+          anime_ids: JSON.stringify(updated),
+        })
+        .eq("id", playlist.id);
+      enqueueSnackbar("Removed from playlist", { variant: "success" });
+    },
+    [animeIds, playlist.id],
+  );
 
   return (
     <div>
@@ -301,7 +365,11 @@ function PlaylistEditor({
 
       <div className="flex gap-2 mb-2">
         <button
-          onClick={() => navigator.clipboard.writeText(`${window.location.origin}/playlists/${playlist.slug}`)}
+          onClick={() =>
+            navigator.clipboard.writeText(
+              `${window.location.origin}/playlists/${playlist.slug}`,
+            )
+          }
           className="px-3 py-1.5 text-xs bg-[#141925] border border-[#253040] rounded-lg text-gray-400 hover:text-gray-200 transition-colors"
         >
           Copy Share Link
@@ -312,51 +380,68 @@ function PlaylistEditor({
         >
           Delete Playlist
         </button>
-        {saving && <span className="text-xs text-gray-500 self-center">Saving...</span>}
+        {saving && (
+          <span className="text-xs text-gray-500 self-center">Saving...</span>
+        )}
       </div>
 
       <div className="mt-6">
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Add Anime</h2>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
+          Add Anime
+        </h2>
         <div className="flex flex-col sm:flex-row gap-2 mb-4">
-          <input
-            type="text"
-            placeholder="Search anime to add..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            className={`flex-1 px-3 py-2 bg-[#0b0e14] border border-[#253040] rounded-lg text-gray-200 text-sm outline-none focus:border-${theme.accent}-500`}
-          />
+          <div className="flex-1">
+            <DashboardInput
+              type="text"
+              placeholder="Search anime to add..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              focusColor="accent"
+            />
+          </div>
           <button
             onClick={handleSearch}
             disabled={searching}
             className={`px-4 py-2 ${theme.btn} text-white text-sm rounded-lg font-medium disabled:opacity-50 transition-colors`}
           >
-            {searching ? '...' : 'Search'}
+            {searching ? "..." : "Search"}
           </button>
         </div>
 
         {searchResults.length > 0 && (
           <div className="space-y-2 mb-6 max-h-60 overflow-y-auto thin-scrollbar">
             {searchResults.map((media) => {
+              console.info("media", media);
               const inPlaylist = animeIds.includes(media.id);
               const mediaTitle = media.title.english || media.title.romaji;
               return (
-                <div key={media.id} className="flex items-center gap-3 bg-[#0b0e14] rounded-lg p-2">
+                <div
+                  key={media.id}
+                  className="flex items-center gap-3 bg-[#0b0e14] rounded-lg p-2"
+                >
                   <Image
-                    src={media.coverImage?.extraLarge || media.coverImage?.large || media.coverImage?.medium || '/placeholder.png'}
+                    src={
+                      media.coverImage?.extraLarge ||
+                      media.coverImage?.large ||
+                      media.coverImage?.medium ||
+                      "/placeholder.png"
+                    }
                     alt=""
                     width={36}
                     height={50}
                     className="rounded object-cover flex-shrink-0"
                     unoptimized
                   />
-                  <span className="text-sm text-gray-300 flex-1 truncate">{mediaTitle}</span>
+                  <span className="text-sm text-gray-300 flex-1 truncate">
+                    {mediaTitle}
+                  </span>
                   <button
                     onClick={() => addAnime(media.id)}
                     disabled={inPlaylist}
                     className={`px-2 py-1 text-xs ${theme.btn} text-white rounded disabled:opacity-50 transition-colors flex-shrink-0`}
                   >
-                    {inPlaylist ? 'Added' : '+ Add'}
+                    {inPlaylist ? "Added" : "+ Add"}
                   </button>
                 </div>
               );
@@ -371,18 +456,30 @@ function PlaylistEditor({
         </h2>
 
         {animeIds.length === 0 ? (
-          <p className="text-gray-600 text-sm">No anime added yet. Use the search above to add some.</p>
+          <p className="text-gray-600 text-sm">
+            No anime added yet. Use the search above to add some.
+          </p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {animeIds.map((id) => {
               const detail = animeDetails.get(id);
-              const detailTitle = detail ? (detail.title.english || detail.title.romaji) : `Anime #${id}`;
+              const detailTitle = detail
+                ? detail.title.english || detail.title.romaji
+                : `Anime #${id}`;
               return (
-                <div key={id} className={`bg-[#141925] rounded-lg overflow-hidden group relative ${detail?.isAdult ? 'border border-red-500/40' : ''}`}>
+                <Link
+                  href={`/anime/${id}`}
+                  key={id}
+                  className={`bg-[#141925] rounded-lg overflow-hidden group relative ${detail?.isAdult ? "border border-red-500/40" : ""}`}
+                >
                   <div className="relative w-full aspect-[3/4]">
                     {detail ? (
                       <Image
-                        src={detail.coverImage.extraLarge || detail.coverImage.large || detail.coverImage.medium}
+                        src={
+                          detail.coverImage.extraLarge ||
+                          detail.coverImage.large ||
+                          detail.coverImage.medium
+                        }
                         alt={detailTitle}
                         fill
                         className="object-cover"
@@ -390,22 +487,31 @@ function PlaylistEditor({
                       />
                     ) : (
                       <div className="absolute inset-0 bg-[#1e2736] flex items-center justify-center">
-                        <div className={`w-4 h-4 border-2 border-[#253040] ${theme.spinnerBorder} rounded-full animate-spin`} />
+                        <div
+                          className={`w-4 h-4 border-2 border-[#253040] ${theme.spinnerBorder} rounded-full animate-spin`}
+                        />
                       </div>
                     )}
                     <button
-                      onClick={() => removeAnime(id)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        removeAnime(id);
+                      }}
                       className="absolute top-1 right-1 w-6 h-6 bg-red-600/80 hover:bg-red-600 rounded-full text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       &times;
                     </button>
                   </div>
                   <div className="p-2">
-                    <p className="text-xs font-medium text-gray-200 truncate" title={detailTitle}>
+                    <p
+                      className="text-xs font-medium text-gray-200 truncate"
+                      title={detailTitle}
+                    >
                       {detailTitle}
                     </p>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>

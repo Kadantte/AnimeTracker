@@ -28,6 +28,32 @@ query SearchAnime($search: String) {
   }
 }`;
 
+const SEARCH_PAGINATED_QUERY = `
+query SearchAnimePaginated($search: String, $page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo { hasNextPage }
+    media(search: $search, type: ANIME) {
+      id
+      idMal
+      title { romaji english }
+      coverImage { extraLarge large medium }
+      status
+      episodes
+      nextAiringEpisode { airingAt episode }
+      genres
+      tags { name rank }
+      studios(isMain: true) { nodes { name } }
+      format
+      season
+      seasonYear
+      source
+      duration
+      averageScore
+      popularity
+    }
+  }
+}`;
+
 const AIRING_QUERY = `
 query AiringSchedule($mediaIds: [Int], $from: Int, $to: Int) {
   Page(perPage: 50) {
@@ -151,6 +177,7 @@ query AnimeDetail($id: Int) {
     popularity
     studios(isMain: true) { nodes { name } }
     nextAiringEpisode { airingAt episode timeUntilAiring }
+    externalLinks { site url type }
     relations {
       edges {
         relationType
@@ -252,6 +279,20 @@ async function cachedGql<T>(label: string, args: unknown, query: string, variabl
 export async function searchAnilist(search: string): Promise<AniListMedia[]> {
   const data = await cachedGql<{ Page: { media: AniListMedia[] } }>('search', search, SEARCH_QUERY, { search });
   return data.Page.media;
+}
+
+export async function searchAnilistPaginated(
+  search: string,
+  page: number,
+  perPage: number,
+): Promise<{ results: AniListMedia[]; hasNextPage: boolean }> {
+  const data = await cachedGql<{
+    Page: { pageInfo: { hasNextPage: boolean }; media: AniListMedia[] };
+  }>('searchPaginated', { search, page, perPage }, SEARCH_PAGINATED_QUERY, { search, page, perPage });
+  return {
+    results: data.Page.media,
+    hasNextPage: data.Page.pageInfo.hasNextPage,
+  };
 }
 
 export async function fetchAnilistAiringSchedule(

@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useSfw } from '@/lib/sfw-context';
 import { getTheme } from '@/lib/theme';
 import RequireAuth from '@/components/RequireAuth';
+import { Spinner } from '@/components/ui/Spinner';
+import { getRandomQuote } from '@/lib/loading-quotes';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -460,11 +462,14 @@ function AdminPage() {
   const router = useRouter();
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingQuote, setLoadingQuote] = useState('');
+  useEffect(() => { setLoadingQuote(getRandomQuote('general')); }, []);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [forbidden, setForbidden] = useState(false);
 
   const fetchStats = useCallback(async () => {
+    const start = Date.now();
     try {
       const res = await fetch('/api/stats');
       if (res.status === 403) {
@@ -483,6 +488,8 @@ function AdminPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch');
     }
+    const elapsed = Date.now() - start;
+    if (elapsed < 1000) await new Promise((r) => setTimeout(r, 1000 - elapsed));
     setLoading(false);
   }, []);
 
@@ -498,8 +505,9 @@ function AdminPage() {
 
   if (loading || forbidden) {
     return (
-      <div className="flex justify-center mt-24">
-        <div className={`w-8 h-8 border-2 border-[#253040] ${theme.spinnerBorder} rounded-full animate-spin`} />
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Spinner size="lg" />
+        <p className="text-base text-gray-400 italic mt-2">{loadingQuote}</p>
       </div>
     );
   }

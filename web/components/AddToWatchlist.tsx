@@ -1,33 +1,33 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/lib/auth-context';
-import { mediaToWatchlistEntry, getErrorMessage } from '@/lib/anime-provider';
-import { enqueueSnackbar } from 'notistack';
-import { useSfw } from '@/lib/sfw-context';
-import { getTheme } from '@/lib/theme';
-import { backfillSeriesId } from '@/lib/series-resolver';
-import { fireClientAchievementEvent } from '@/lib/achievements/fire-event';
-import { upsertSeriesMetadata } from '@/lib/series-metadata';
-import type { AniListMedia } from '@/lib/types';
-import type { WatchStatus } from '@/lib/types';
+import { useState, useRef, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
+import { mediaToWatchlistEntry, getErrorMessage } from "@/lib/anime-provider";
+import { enqueueSnackbar } from "notistack";
+import { useSfw } from "@/lib/sfw-context";
+import { getTheme } from "@/lib/theme";
+import { backfillSeriesId } from "@/lib/series-resolver";
+import { fireClientAchievementEvent } from "@/lib/achievements/fire-event";
+import { upsertSeriesMetadata } from "@/lib/series-metadata";
+import type { AniListMedia } from "@/lib/types";
+import type { WatchStatus } from "@/lib/types";
 
-const STATUSES: WatchStatus[] = ['Watching', 'Planned', 'Completed', 'Dropped'];
+const STATUSES: WatchStatus[] = ["Watching", "Planned", "Completed", "Dropped"];
 
 const statusColors: Record<WatchStatus, string> = {
-  Watching: 'text-emerald-400',
-  Planned: 'text-blue-400',
-  Completed: 'text-purple-400',
-  Dropped: 'text-red-400',
+  Watching: "text-emerald-400",
+  Planned: "text-blue-400",
+  Completed: "text-purple-400",
+  Dropped: "text-red-400",
 };
 
 const dropdownMotion = {
   initial: { opacity: 0, scale: 0.95, y: -4 },
   animate: { opacity: 1, scale: 1, y: 0 },
   exit: { opacity: 0, scale: 0.95, y: -4 },
-  transition: { duration: 0.15, ease: 'easeOut' as const },
+  transition: { duration: 0.15, ease: "easeOut" as const },
 };
 
 export default function AddToWatchlist({ media }: { media: AniListMedia }) {
@@ -35,19 +35,37 @@ export default function AddToWatchlist({ media }: { media: AniListMedia }) {
   const { sfwMode } = useSfw();
   const theme = getTheme(sfwMode);
   const [added, setAdded] = useState(false);
-  const [currentStatus, setCurrentStatus] = useState<WatchStatus>('Watching');
+  const [currentStatus, setCurrentStatus] = useState<WatchStatus>("Watching");
   const [showDropdown, setShowDropdown] = useState(false);
   const [docId, setDocId] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
+
+  const updateDropPos = useCallback(() => {
+    if (!btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const dropWidth = 160;
+    let left = rect.right - dropWidth;
+    if (left < 8) left = 8;
+    if (left + dropWidth > window.innerWidth - 8)
+      left = window.innerWidth - dropWidth - 8;
+    setDropPos({ top: rect.bottom + 4, left });
+  }, []);
 
   useEffect(() => {
+    if (!showDropdown) return;
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setShowDropdown(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || dropRef.current?.contains(target))
+        return;
+      setShowDropdown(false);
     }
-    if (showDropdown) document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
   }, [showDropdown]);
 
   async function handleAdd(status: WatchStatus) {
@@ -55,26 +73,26 @@ export default function AddToWatchlist({ media }: { media: AniListMedia }) {
     setUpdating(true);
     setShowDropdown(false);
     try {
-      if (!userId) throw new Error('Not logged in');
+      if (!userId) throw new Error("Not logged in");
 
       if (added && docId) {
         const { error } = await supabase
-          .from('watchlist_entries')
+          .from("watchlist_entries")
           .update({ watch_status: status })
-          .eq('id', docId);
+          .eq("id", docId);
         if (error) throw error;
         setCurrentStatus(status);
-        enqueueSnackbar(`Status changed to ${status}`, { variant: 'success' });
-        fireClientAchievementEvent(userId, 'status_change');
+        enqueueSnackbar(`Status changed to ${status}`, { variant: "success" });
+        fireClientAchievementEvent(userId, "status_change");
       } else {
         const entry = mediaToWatchlistEntry(media);
         const { data: doc, error } = await supabase
-          .from('watchlist_entries')
+          .from("watchlist_entries")
           .insert({
             ...entry,
             user_id: userId,
             watch_status: status,
-            import_source: 'manual',
+            import_source: "manual",
             canonical_anilist_id: media.id,
           })
           .select()
@@ -85,15 +103,15 @@ export default function AddToWatchlist({ media }: { media: AniListMedia }) {
         setCurrentStatus(status);
         setJustAdded(true);
         setTimeout(() => setJustAdded(false), 600);
-        enqueueSnackbar(`Added as ${status}`, { variant: 'success' });
-        fireClientAchievementEvent(userId, 'watchlist_add');
+        enqueueSnackbar(`Added as ${status}`, { variant: "success" });
+        fireClientAchievementEvent(userId, "watchlist_add");
         upsertSeriesMetadata(supabase, media).catch(() => {});
         backfillSeriesId(doc.id, media.id, async (id, data) => {
-          await supabase.from('watchlist_entries').update(data).eq('id', id);
+          await supabase.from("watchlist_entries").update(data).eq("id", id);
         }).catch(() => {});
       }
     } catch (err) {
-      enqueueSnackbar(getErrorMessage(err), { variant: 'error' });
+      enqueueSnackbar(getErrorMessage(err), { variant: "error" });
     }
     setUpdating(false);
   }
@@ -103,18 +121,18 @@ export default function AddToWatchlist({ media }: { media: AniListMedia }) {
       if (!userId) return;
 
       let { data } = await supabase
-        .from('watchlist_entries')
+        .from("watchlist_entries")
         .select()
-        .eq('user_id', userId)
-        .eq('media_id', media.id)
+        .eq("user_id", userId)
+        .eq("media_id", media.id)
         .limit(1);
 
       if ((!data || data.length === 0) && media.idMal) {
         const res = await supabase
-          .from('watchlist_entries')
+          .from("watchlist_entries")
           .select()
-          .eq('user_id', userId)
-          .eq('id_mal', media.idMal)
+          .eq("user_id", userId)
+          .eq("id_mal", media.idMal)
           .limit(1);
         data = res.data;
       }
@@ -137,19 +155,25 @@ export default function AddToWatchlist({ media }: { media: AniListMedia }) {
 
   if (!added) {
     return (
-      <div ref={ref} className="relative" onClick={(e) => e.stopPropagation()}>
+      <div ref={ref} className="relative" onClick={(e) => [e.stopPropagation(), e.preventDefault()]}>
         <button
-          onClick={() => setShowDropdown(!showDropdown)}
+          ref={btnRef}
+          onClick={() => {
+            updateDropPos();
+            setShowDropdown(!showDropdown);
+          }}
           disabled={updating}
           className={`px-3 py-1.5 ${theme.btn} text-white text-sm rounded-lg font-medium disabled:opacity-50 transition-colors`}
         >
-          {updating ? '...' : '+ Add'}
+          {updating ? "..." : "+ Add"}
         </button>
         <AnimatePresence>
           {showDropdown && (
             <motion.div
+              ref={dropRef}
               {...dropdownMotion}
-              className="absolute left-0 sm:left-auto sm:right-0 top-full mt-1 z-[100] w-40 bg-[#141925] border border-[#253040] rounded-lg shadow-xl overflow-hidden"
+              className="fixed z-[100] w-40 bg-[#141925] border border-[#253040] rounded-lg shadow-xl overflow-hidden"
+              style={{ top: dropPos.top, left: dropPos.left }}
             >
               {STATUSES.map((s) => (
                 <button
@@ -168,33 +192,46 @@ export default function AddToWatchlist({ media }: { media: AniListMedia }) {
   }
 
   return (
-    <div ref={ref} className={`relative ${justAdded ? 'animate-watchlist-burst' : ''}`} onClick={(e) => e.stopPropagation()}>
+    <div
+      ref={ref}
+      className={`relative ${justAdded ? "animate-watchlist-burst" : ""}`}
+      onClick={(e) => [e.preventDefault(), e.stopPropagation()]}
+    >
       <motion.button
+        ref={btnRef}
         key={String(added)}
         initial={{ scale: 0.8 }}
         animate={{ scale: 1 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-        onClick={() => setShowDropdown(!showDropdown)}
+        transition={{ type: "spring", stiffness: 400, damping: 15 }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          updateDropPos();
+          setShowDropdown(!showDropdown);
+        }}
         disabled={updating}
         className={`px-3 py-1.5 bg-[#141925] border border-[#253040] text-sm rounded-lg font-medium transition-colors hover:bg-[#1c2333] ${statusColors[currentStatus]}`}
       >
-        {updating ? '...' : currentStatus}
+        {updating ? "..." : currentStatus}
       </motion.button>
       <AnimatePresence>
         {showDropdown && (
           <motion.div
+            ref={dropRef}
             {...dropdownMotion}
-            className="absolute right-0 top-full mt-1 z-[100] w-40 bg-[#141925] border border-[#253040] rounded-lg shadow-xl overflow-hidden"
+            className="fixed z-[100] w-40 bg-[#141925] border border-[#253040] rounded-lg shadow-xl overflow-hidden"
+            style={{ top: dropPos.top, left: dropPos.left }}
           >
             {STATUSES.map((s) => (
               <button
                 key={s}
                 onClick={() => handleAdd(s)}
                 className={`w-full text-left px-3 py-2 text-sm hover:bg-[#1c2333] transition-colors ${
-                  currentStatus === s ? statusColors[s] : 'text-gray-300'
+                  currentStatus === s ? statusColors[s] : "text-gray-300"
                 }`}
               >
-                {currentStatus === s ? '● ' : '○ '}{s}
+                {currentStatus === s ? "● " : "○ "}
+                {s}
               </button>
             ))}
           </motion.div>

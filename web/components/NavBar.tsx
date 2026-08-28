@@ -45,7 +45,8 @@ export default function NavBar() {
           .from('notifications')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', userId)
-          .eq('is_read', false);
+          .eq('is_read', false)
+          .eq('type', 'episode');
         setUnreadCount(count ?? 0);
       } catch {
         // Not critical
@@ -98,6 +99,9 @@ export default function NavBar() {
             <Link
               key={href}
               href={href}
+              onClick={() => {
+                if (pathname === href) window.dispatchEvent(new CustomEvent('nav-reset', { detail: href }));
+              }}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 pathname === href
                   ? `${theme.activeTab} text-white`
@@ -209,6 +213,9 @@ export default function NavBar() {
           <Link
             key={href}
             href={href}
+            onClick={() => {
+              if (pathname === href) window.dispatchEvent(new CustomEvent('nav-reset', { detail: href }));
+            }}
             className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 rounded-lg transition-colors ${
               pathname === href ? `${theme.btnText}` : 'text-gray-500'
             }`}

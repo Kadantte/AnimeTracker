@@ -82,6 +82,7 @@ export interface AnimeDetail {
     episode: number;
     timeUntilAiring: number;
   } | null;
+  externalLinks?: { site: string; url: string; type: string }[];
   relations: {
     edges: {
       relationType: string;
@@ -99,7 +100,7 @@ export interface AnimeDetail {
 
 export interface WatchURLs {
   url9anime: string;
-  urlKickass: string;
+  urlAnikoto: string;
 }
 
 export type WatchStatus = "Watching" | "Planned" | "Completed" | "Dropped";
